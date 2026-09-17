@@ -16,6 +16,7 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from dotenv import load_dotenv
 
@@ -23,7 +24,6 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "shortlinks.db"))
-BASE_URL = os.getenv("BASE_URL", "https://anythingen.com").rstrip("/")
 SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(32))
 API_KEY = os.getenv("API_KEY", "change-me")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
@@ -41,6 +41,19 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "1") == "1",
 )
+
+# ProxyFix for Nginx reverse proxy - must be applied before any requests
+app.wsgi_app = ProxyFix(
+    app.wsgi_app,
+    x_for=1,
+    x_proto=1,
+    x_host=1,
+)
+
+
+def get_base_url():
+    """Get base URL dynamically based on current request (supports Nginx reverse proxy)."""
+    return request.url_root.rstrip("/")
 
 
 def get_db():
@@ -182,10 +195,10 @@ def unique_random_code(conn):
             return code
 
 
-def row_to_dict(row):
+def row_to_dict(row, base_url):
     item = dict(row)
     item["enabled"] = bool(item["enabled"])
-    item["short_url"] = f"{BASE_URL}/s/{item['code']}"
+    item["short_url"] = f"{base_url}/s/{item['code']}"
     return item
 
 
@@ -253,15 +266,16 @@ def admin():
     conn.close()
 
     pages = max((total + per_page - 1) // per_page, 1)
+    base_url = get_base_url()
     return render_template(
         "admin.html",
-        links=[row_to_dict(r) for r in rows],
+        links=[row_to_dict(r, base_url) for r in rows],
         q=q,
         page=page,
         pages=pages,
         total=total,
         stats=stats,
-        base_url=BASE_URL,
+        base_url=base_url,
     )
 
 
@@ -300,7 +314,7 @@ def add_link():
             flash("这个短码已经存在", "danger")
             return render_template("link_form.html", mode="new", form=request.form, allowed_domains=ALLOWED_DOMAINS)
         conn.close()
-        flash(f"短链接已创建：{BASE_URL}/s/{code}", "success")
+        flash(f"短链接已创建：{get_base_url()}/s/{code}", "success")
         return redirect(url_for("admin"))
 
     return render_template("link_form.html", mode="new", form={}, allowed_domains=ALLOWED_DOMAINS)
@@ -314,6 +328,7 @@ def edit_link(code):
     if not row:
         conn.close()
         return "Not found", 404
+    base_url = get_base_url()
 
     if request.method == "POST":
         target_url = normalize_url(request.form.get("target_url"))
@@ -325,11 +340,11 @@ def edit_link(code):
         if not is_allowed_url(target_url):
             conn.close()
             flash("目标链接无效，或域名不在允许列表中", "danger")
-            return render_template("link_form.html", mode="edit", link=row_to_dict(row), form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form=request.form, allowed_domains=ALLOWED_DOMAINS)
         if expires_raw and not expires_at:
             conn.close()
             flash("过期时间格式无效", "danger")
-            return render_template("link_form.html", mode="edit", link=row_to_dict(row), form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form=request.form, allowed_domains=ALLOWED_DOMAINS)
 
         conn.execute(
             "UPDATE links SET target_url=?, note=?, enabled=?, expires_at=?, updated_at=CURRENT_TIMESTAMP WHERE code=?",
@@ -341,7 +356,7 @@ def edit_link(code):
         return redirect(url_for("admin"))
 
     conn.close()
-    return render_template("link_form.html", mode="edit", link=row_to_dict(row), form={}, allowed_domains=ALLOWED_DOMAINS)
+    return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form={}, allowed_domains=ALLOWED_DOMAINS)
 
 
 @app.post("/admin/links/<code>/toggle")
@@ -432,7 +447,8 @@ def api_list_links():
     else:
         rows = conn.execute("SELECT * FROM links ORDER BY id DESC").fetchall()
     conn.close()
-    return jsonify({"success": True, "count": len(rows), "data": [row_to_dict(r) for r in rows]})
+    base_url = get_base_url()
+    return jsonify({"success": True, "count": len(rows), "data": [row_to_dict(r, base_url) for r in rows]})
 
 
 @app.post("/api/links")
@@ -466,7 +482,7 @@ def api_create_link():
         conn.close()
         return jsonify({"success": False, "error": "code already exists"}), 409
     conn.close()
-    return jsonify({"success": True, "data": row_to_dict(row)}), 201
+    return jsonify({"success": True, "data": row_to_dict(row, get_base_url())}), 201
 
 
 @app.get("/api/links/<code>")
@@ -477,7 +493,7 @@ def api_get_link(code):
     conn.close()
     if not row:
         return jsonify({"success": False, "error": "not found"}), 404
-    return jsonify({"success": True, "data": row_to_dict(row)})
+    return jsonify({"success": True, "data": row_to_dict(row, get_base_url())})
 
 
 @app.route("/api/links/<code>", methods=["PUT", "PATCH"])
@@ -510,7 +526,7 @@ def api_update_link(code):
     conn.commit()
     updated = conn.execute("SELECT * FROM links WHERE code=?", (code,)).fetchone()
     conn.close()
-    return jsonify({"success": True, "data": row_to_dict(updated)})
+    return jsonify({"success": True, "data": row_to_dict(updated, get_base_url())})
 
 
 @app.delete("/api/links/<code>")

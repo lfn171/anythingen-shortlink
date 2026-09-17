@@ -1,6 +1,7 @@
 import requests
 
-BASE = "https://anythingen.com"
+# 请将此地址替换为你的实际访问地址
+BASE = "https://your-domain.com"
 API_KEY = "替换成你的 API_KEY"
 HEADERS = {"X-API-Key": API_KEY}
 

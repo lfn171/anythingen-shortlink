@@ -1,6 +1,13 @@
 # Anythingen Shortlink
 
-一个 Flask + SQLite 短链接管理系统，面向 `https://anythingen.com`。
+一个 Flask + SQLite 短链接管理系统。
+
+系统会根据访问域名自动生成短链接，无需配置 BASE_URL。
+
+例如：
+- 本地访问 `http://127.0.0.1:5000/admin` → 短链显示为 `http://127.0.0.1:5000/s/xxx`
+- 生产访问 `https://anythingen.com/admin` → 短链显示为 `https://anythingen.com/s/xxx`
+- 更换域名后无需修改代码或数据库，只需修改 DNS、Nginx server_name 和 HTTPS 证书。
 
 ## 功能
 
@@ -47,7 +54,6 @@ nano /opt/anythingen-shortlink/.env
 示例：
 
 ```env
-BASE_URL=https://anythingen.com
 SECRET_KEY=第一串随机值
 API_KEY=第二串随机值
 ADMIN_USERNAME=admin
