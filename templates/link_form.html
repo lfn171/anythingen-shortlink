@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>{% if mode == 'new' %}新增短链{% else %}编辑短链{% endif %}</h1></div></div>
+<form method="post" class="card form-stack wide-form">
+  <label>目标链接
+    <input name="target_url" value="{{ form.get('target_url', link.target_url if link else '') }}" placeholder="https://pan.quark.cn/s/..." required>
+  </label>
+  <p class="hint">允许域名：{{ allowed_domains|join(', ') }}</p>
+
+  {% if mode == 'new' %}
+  <label>自定义短码（留空自动生成）
+    <input name="code" value="{{ form.get('code','') }}" placeholder="例如 zaojia2026">
+  </label>
+  {% else %}
+  <label>短码<input value="{{ link.code }}" disabled></label>
+  {% endif %}
+
+  <label>备注
+    <input name="note" value="{{ form.get('note', link.note if link else '') }}" placeholder="例如 2026 一级造价">
+  </label>
+
+  <label>过期时间（可留空）
+    {% set exp = form.get('expires_at', (link.expires_at|replace(' ', 'T')) if link and link.expires_at else '') %}
+    <input type="datetime-local" name="expires_at" value="{{ exp }}">
+  </label>
+
+  {% set enabled_value = form.get('enabled') if form else None %}
+  <label class="check"><input type="checkbox" name="enabled" {% if enabled_value == 'on' or (not form and (not link or link.enabled)) %}checked{% endif %}> 启用链接</label>
+
+  <div class="button-row"><button class="btn primary" type="submit">保存</button><a class="btn ghost" href="{{ url_for('admin') }}">返回</a></div>
+</form>
+{% endblock %}
