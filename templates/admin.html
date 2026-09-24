@@ -19,7 +19,7 @@
 
 <div class="table-wrap">
 <table>
-  <thead><tr><th>短码 / 短链</th><th>备注</th><th>目标链接</th><th>访问</th><th>状态</th><th>最后访问</th><th>操作</th></tr></thead>
+  <thead><tr><th>短码 / 短链</th><th>备注</th><th>目标链接</th><th><a href="?q={{ q }}&sort=visits_desc">访问</a></th><th>状态</th><th>最后访问</th><th>操作</th></tr></thead>
   <tbody>
   {% for link in links %}
     <tr>
@@ -47,9 +47,9 @@
 
 {% if pages > 1 %}
 <div class="pagination">
-  {% if page > 1 %}<a class="btn" href="?q={{ q }}&page={{ page-1 }}">上一页</a>{% endif %}
+  {% if page > 1 %}<a class="btn" href="?q={{ q }}&sort={{ sort }}&page={{ page-1 }}">上一页</a>{% endif %}
   <span>第 {{ page }} / {{ pages }} 页，共 {{ total }} 条</span>
-  {% if page < pages %}<a class="btn" href="?q={{ q }}&page={{ page+1 }}">下一页</a>{% endif %}
+  {% if page < pages %}<a class="btn" href="?q={{ q }}&sort={{ sort }}&page={{ page+1 }}">下一页</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

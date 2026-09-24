@@ -242,6 +242,7 @@ def index():
 @login_required
 def admin():
     q = request.args.get("q", "").strip()
+    sort = request.args.get("sort", "")
     page = max(int(request.args.get("page", 1) or 1), 1)
     per_page = 20
     offset = (page - 1) * per_page
@@ -254,9 +255,11 @@ def admin():
         pattern = f"%{q}%"
         params = [pattern, pattern, pattern]
 
+    order_by = "id DESC" if sort != "visits_desc" else "visits DESC, id DESC"
+
     total = conn.execute(f"SELECT COUNT(*) AS c FROM links {where}", params).fetchone()["c"]
     rows = conn.execute(
-        f"SELECT * FROM links {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+        f"SELECT * FROM links {where} ORDER BY {order_by} LIMIT ? OFFSET ?",
         [*params, per_page, offset],
     ).fetchall()
     stats = conn.execute(
@@ -271,6 +274,7 @@ def admin():
         "admin.html",
         links=[row_to_dict(r, base_url) for r in rows],
         q=q,
+        sort=sort,
         page=page,
         pages=pages,
         total=total,
