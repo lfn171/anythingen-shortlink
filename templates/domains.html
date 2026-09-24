@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>允许域名</h1><p class="muted">设置哪些域名可以创建短链接</p></div>
+</div>
+
+<div class="card">
+  <h3>添加域名</h3>
+  <form method="post" class="add-domain-form">
+    <input type="hidden" name="action" value="add">
+    <input name="domain" placeholder="例如 pan.quark.cn" required>
+    <button class="btn primary" type="submit">添加</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>已允许的域名</h3>
+  {% if domains %}
+  <ul class="domain-list">
+    {% for domain in domains %}
+    <li>
+      <span>{{ domain }}</span>
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="domain" value="{{ domain }}">
+        <button class="btn small danger" type="submit" onclick="return confirm('确定删除域名 {{ domain }} 吗？')">删除</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">暂无允许的域名</p>
+  {% endif %}
+</div>
+
+<style>
+.add-domain-form { display: flex; gap: 8px; margin-top: 12px; }
+.add-domain-form input { flex: 1; max-width: 400px; }
+.domain-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.domain-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
+.domain-list li:last-child { border-bottom: none; }
+</style>
+{% endblock %}

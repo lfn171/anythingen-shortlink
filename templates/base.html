@@ -12,6 +12,7 @@
   {% if session.get('logged_in') %}
   <nav>
     <a href="{{ url_for('admin') }}">链接管理</a>
+    <a href="{{ url_for('manage_domains') }}">允许域名</a>
     <a href="{{ url_for('change_password') }}">修改密码</a>
     <a href="{{ url_for('logout') }}">退出</a>
   </nav>

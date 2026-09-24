@@ -1,3 +1,4 @@
+import json
 import os
 import secrets
 import sqlite3
@@ -28,7 +29,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(32))
 API_KEY = os.getenv("API_KEY", "change-me")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change-me-now")
-ALLOWED_DOMAINS = {
+DEFAULT_ALLOWED_DOMAINS = {
     d.strip().lower()
     for d in os.getenv("ALLOWED_DOMAINS", "pan.quark.cn,pan.baidu.com").split(",")
     if d.strip()
@@ -117,6 +118,31 @@ def set_admin_password(password):
     conn.close()
 
 
+def get_allowed_domains():
+    """Get allowed domains from database, fallback to env default."""
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key='allowed_domains'").fetchone()
+    conn.close()
+    if row and row["value"]:
+        try:
+            return set(json.loads(row["value"]))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return DEFAULT_ALLOWED_DOMAINS.copy()
+
+
+def set_allowed_domains(domains):
+    """Save allowed domains to database."""
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO settings(key, value) VALUES('allowed_domains', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (json.dumps(list(domains)),),
+    )
+    conn.commit()
+    conn.close()
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -160,7 +186,7 @@ def is_allowed_url(url):
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             return False
         host = parsed.hostname.lower()
-        return host in ALLOWED_DOMAINS
+        return host in get_allowed_domains()
     except Exception:
         return False
 
@@ -296,13 +322,13 @@ def add_link():
 
         if not is_allowed_url(target_url):
             flash("目标链接无效，或域名不在允许列表中", "danger")
-            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=get_allowed_domains())
         if code and not is_valid_code(code):
             flash("短码只能使用字母、数字、-、_，最多 64 位", "danger")
-            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=get_allowed_domains())
         if expires_raw and not expires_at:
             flash("过期时间格式无效", "danger")
-            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=get_allowed_domains())
 
         conn = get_db()
         if not code:
@@ -316,12 +342,12 @@ def add_link():
         except sqlite3.IntegrityError:
             conn.close()
             flash("这个短码已经存在", "danger")
-            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="new", form=request.form, allowed_domains=get_allowed_domains())
         conn.close()
         flash(f"短链接已创建：{get_base_url()}/s/{code}", "success")
         return redirect(url_for("admin"))
 
-    return render_template("link_form.html", mode="new", form={}, allowed_domains=ALLOWED_DOMAINS)
+    return render_template("link_form.html", mode="new", form={}, allowed_domains=get_allowed_domains())
 
 
 @app.route("/admin/links/<code>/edit", methods=["GET", "POST"])
@@ -344,11 +370,11 @@ def edit_link(code):
         if not is_allowed_url(target_url):
             conn.close()
             flash("目标链接无效，或域名不在允许列表中", "danger")
-            return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form=request.form, allowed_domains=get_allowed_domains())
         if expires_raw and not expires_at:
             conn.close()
             flash("过期时间格式无效", "danger")
-            return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form=request.form, allowed_domains=ALLOWED_DOMAINS)
+            return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form=request.form, allowed_domains=get_allowed_domains())
 
         conn.execute(
             "UPDATE links SET target_url=?, note=?, enabled=?, expires_at=?, updated_at=CURRENT_TIMESTAMP WHERE code=?",
@@ -360,7 +386,7 @@ def edit_link(code):
         return redirect(url_for("admin"))
 
     conn.close()
-    return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form={}, allowed_domains=ALLOWED_DOMAINS)
+    return render_template("link_form.html", mode="edit", link=row_to_dict(row, base_url), form={}, allowed_domains=get_allowed_domains())
 
 
 @app.post("/admin/links/<code>/toggle")
@@ -410,6 +436,38 @@ def change_password():
             flash("密码已修改", "success")
             return redirect(url_for("admin"))
     return render_template("password.html")
+
+
+@app.route("/admin/domains", methods=["GET", "POST"])
+@login_required
+def manage_domains():
+    if request.method == "POST":
+        domain = request.form.get("domain", "").strip().lower()
+        action = request.form.get("action")
+
+        if not domain:
+            flash("域名不能为空", "danger")
+        elif action == "add":
+            domains = get_allowed_domains()
+            if domain in domains:
+                flash(f"域名 {domain} 已在列表中", "warning")
+            else:
+                domains.add(domain)
+                set_allowed_domains(domains)
+                flash(f"域名 {domain} 已添加", "success")
+        elif action == "delete":
+            domains = get_allowed_domains()
+            if domain in domains:
+                domains.discard(domain)
+                set_allowed_domains(domains)
+                flash(f"域名 {domain} 已删除", "success")
+            else:
+                flash(f"域名 {domain} 不在列表中", "warning")
+
+        return redirect(url_for("manage_domains"))
+
+    domains = sorted(get_allowed_domains())
+    return render_template("domains.html", domains=domains)
 
 
 @app.get("/s/<code>")
